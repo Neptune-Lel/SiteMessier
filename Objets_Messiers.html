@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Carnet Messier — Liste interactive</title>
+  <style>
+    :root {
+      --bg: #0b0f16;
+      --panel: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #22c55e; /* vert */
+      --ring: #374151;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: radial-gradient(1200px 600px at 20% -10%, #0f1624 0%, var(--bg) 60%), var(--bg);
+      color: var(--text);
+    }
+    header {
+      position: sticky; top: 0; z-index: 10;
+      background: linear-gradient(180deg, rgba(11,15,22,.95), rgba(11,15,22,.75));
+      backdrop-filter: saturate(140%) blur(6px);
+      border-bottom: 1px solid var(--ring);
+    }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+    h1 { margin: 4px 0 8px; font-size: 22px; letter-spacing: .3px; }
+    .sub { color: var(--muted); font-size: 14px; margin-bottom: 12px; }
+
+    .toolbar { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; }
+    .search { width: 100%; padding: 10px 12px; border-radius: 10px; background: var(--panel); color: var(--text); border: 1px solid var(--ring); outline: none; }
+    .btn { padding: 10px 12px; border: 1px solid var(--ring); background: var(--panel); color: var(--text); border-radius: 10px; cursor: pointer; }
+    .btn:hover { filter: brightness(1.1); }
+
+    .stats { display: flex; gap: 12px; align-items: center; font-size: 14px; color: var(--muted); }
+    .bar { position: relative; height: 8px; background: #1f2937; border-radius: 999px; overflow: hidden; width: 200px; }
+    .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; background: var(--accent); transition: width .3s ease; }
+
+    main { max-width: 980px; margin: 0 auto; padding: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+    .item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.02); border: 1px solid var(--ring); }
+    .item input { width: 18px; height: 18px; }
+    .name { user-select: none; font-weight: 500; color: #ffffff; transition: color .2s ease; }
+    .item.checked .name { color: var(--accent); }
+    .badge { margin-left: auto; font-size: 11px; color: var(--muted); }
+
+    footer { max-width: 980px; margin: 18px auto 40px; color: var(--muted); font-size: 12px; text-align: center; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>🌌 Carnet Messier — Liste interactive (M1 à M110)</h1>
+      <div class="sub">Coche une case pour marquer un objet comme observé. Le nom passe en <strong style="color: var(--accent)">vert</strong> quand c'est observé, et en <strong>blanc</strong> sinon. Les choix sont enregistrés automatiquement sur cet appareil.</div>
+      <div class="toolbar">
+        <input id="q" class="search" type="search" placeholder="Rechercher (ex. M42, Andromède, Pléiades)" aria-label="Rechercher" />
+        <button id="clear" class="btn" title="Tout décocher">Tout décocher</button>
+        <button id="selectAll" class="btn" title="Tout cocher">Tout cocher</button>
+        <div class="stats" aria-live="polite">
+          <div id="counter">0 / 110 observés</div>
+          <div class="bar"><div id="fill" class="fill"></div></div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="list" class="grid" role="list"></div>
+  </main>
+
+  <footer>
+    Astuce : Observe les objets les plus brillants, voire même visibles à l'oeil nu : M31, M13, M42 ou M45 !
+  </footer>
+
+  <script>
+    // --- Données Messier (identifiant + alias utiles pour la recherche) ---
+    const M = [
+      { id: 'M1',  name: 'M1 — Nébuleuse du Crabe (Taureau)', aliases: 'crabe crab nebula taureau orion supernova' },
+      { id: 'M2',  name: 'M2 — Amas globulaire (Verseau)', aliases: 'globulaire verseau' },
+      { id: 'M3',  name: 'M3 — Amas globulaire (Chiens de Chasse)', aliases: 'globulaire chiens de chasse' },
+      { id: 'M4',  name: 'M4 — Amas globulaire (Scorpion)', aliases: 'globulaire scorpion' },
+      { id: 'M5',  name: 'M5 — Amas globulaire (Serpent)', aliases: 'globulaire serpent' },
+      { id: 'M6',  name: 'M6 — Amas du Papillon (Scorpion)', aliases: 'amas ouvert papillon scorpion' },
+      { id: 'M7',  name: "M7 — Amas de Ptolémée (Scorpion)", aliases: 'amas ouvert scorpion ptolemée ptolemee' },
+      { id: 'M8',  name: 'M8 — Nébuleuse de la Lagune (Sagittaire)', aliases: 'lagune lagoon sagittaire' },
+      { id: 'M9',  name: 'M9 — Amas globulaire (Ophiuchus)', aliases: 'globulaire serpent porteur' },
+      { id: 'M10', name: 'M10 — Amas globulaire (Ophiuchus)', aliases: 'globulaire' },
+      { id: 'M11', name: 'M11 — Amas du Canard Sauvage (Écu)', aliases: 'canard sauvage eçu ecur ecus' },
+      { id: 'M12', name: 'M12 — Amas globulaire (Ophiuchus)', aliases: 'globulaire' },
+      { id: 'M13', name: 'M13 — Grand amas d’Hercule', aliases: 'hercule globulaire grand amas' },
+      { id: 'M14', name: 'M14 — Amas globulaire (Ophiuchus)', aliases: 'globulaire' },
+      { id: 'M15', name: 'M15 — Amas globulaire (Pégase)', aliases: 'globulaire pegase' },
+      { id: 'M16', name: "M16 — Nébuleuse de l'Aigle (Serpent)", aliases: 'aigle eagle piliers de la création' },
+      { id: 'M17', name: 'M17 — Nébuleuse Oméga (Sagittaire)', aliases: 'omega cygne fer à cheval swan' },
+      { id: 'M18', name: 'M18 — Amas ouvert (Sagittaire)', aliases: 'amas ouvert' },
+      { id: 'M19', name: 'M19 — Amas globulaire (Ophiuchus)', aliases: 'globulaire' },
+      { id: 'M20', name: 'M20 — Nébuleuse Trifide (Sagittaire)', aliases: 'trifide trifid' },
+      { id: 'M21', name: 'M21 — Amas ouvert (Sagittaire)', aliases: 'amas ouvert' },
+      { id: 'M22', name: 'M22 — Amas globulaire (Sagittaire)', aliases: 'globulaire' },
+      { id: 'M23', name: 'M23 — Amas ouvert (Sagittaire)', aliases: 'amas ouvert' },
+      { id: 'M24', name: 'M24 — Nuage stellaire du Sagittaire', aliases: 'nuage stellaire' },
+      { id: 'M25', name: 'M25 — Amas ouvert (Sagittaire)', aliases: 'amas ouvert' },
+      { id: 'M26', name: 'M26 — Amas ouvert (Écu)', aliases: 'amas ouvert eçu ecur' },
+      { id: 'M27', name: "M27 — Nébuleuse de l'Haltère (Renard)", aliases: 'haltère haltere dumbbell renard' },
+      { id: 'M28', name: 'M28 — Amas globulaire (Sagittaire)', aliases: 'globulaire' },
+      { id: 'M29', name: 'M29 — Amas ouvert (Cygne)', aliases: 'amas ouvert' },
+      { id: 'M30', name: 'M30 — Amas globulaire (Capricorne)', aliases: 'globulaire' },
+      { id: 'M31', name: "M31 — Galaxie d'Andromède", aliases: 'andromede andromeda galaxy' },
+      { id: 'M32', name: 'M32 — Compagnon de M31', aliases: 'elliptique andromede' },
+      { id: 'M33', name: 'M33 — Galaxie du Triangle', aliases: 'triangle triangulum' },
+      { id: 'M34', name: 'M34 — Amas ouvert (Persée)', aliases: 'amas ouvert' },
+      { id: 'M35', name: 'M35 — Amas ouvert (Gémeaux)', aliases: 'amas ouvert gemeaux' },
+      { id: 'M36', name: 'M36 — Amas ouvert (Cocher)', aliases: 'amas ouvert' },
+      { id: 'M37', name: 'M37 — Amas ouvert (Cocher)', aliases: 'amas ouvert' },
+      { id: 'M38', name: 'M38 — Amas ouvert (Cocher)', aliases: 'amas ouvert' },
+      { id: 'M39', name: 'M39 — Amas ouvert (Cygne)', aliases: 'amas ouvert' },
+      { id: 'M40', name: 'M40 — Étoiles doubles (Grande Ourse)', aliases: 'double double star' },
+      { id: 'M41', name: 'M41 — Amas ouvert (Grand Chien)', aliases: 'amas ouvert' },
+      { id: 'M42', name: "M42 — Nébuleuse d'Orion", aliases: 'orion great orion nebula' },
+      { id: 'M43', name: 'M43 — Nébuleuse de Mairan (Orion)', aliases: 'mairan orion' },
+      { id: 'M44', name: 'M44 — Amas de la Crèche (Cancer)', aliases: 'praesepe creche beehive' },
+      { id: 'M45', name: 'M45 — Pléiades (Taureau)', aliases: 'pleiades m45 seven sisters' },
+      { id: 'M46', name: 'M46 — Amas ouvert (Poupe)', aliases: 'amas ouvert' },
+      { id: 'M47', name: 'M47 — Amas ouvert (Poupe)', aliases: 'amas ouvert' },
+      { id: 'M48', name: 'M48 — Amas ouvert (Hydre)', aliases: 'amas ouvert' },
+      { id: 'M49', name: 'M49 — Galaxie elliptique (Vierge)', aliases: 'elliptique vierge virgo' },
+      { id: 'M50', name: 'M50 — Amas ouvert (Licorne)', aliases: 'amas ouvert licorne' },
+      { id: 'M51', name: 'M51 — Galaxie du Tourbillon (Chiens de Chasse)', aliases: 'whirlpool' },
+      { id: 'M52', name: 'M52 — Amas ouvert (Cassiopeia)', aliases: 'amas ouvert cassiopee' },
+      { id: 'M53', name: 'M53 — Amas globulaire (Chevelure)', aliases: 'globulaire chevelure de berenice' },
+      { id: 'M54', name: 'M54 — Amas globulaire (Sagittaire)', aliases: 'globulaire' },
+      { id: 'M55', name: 'M55 — Amas globulaire (Sagittaire)', aliases: 'globulaire' },
+      { id: 'M56', name: 'M56 — Amas globulaire (Lyre)', aliases: 'globulaire lyre' },
+      { id: 'M57', name: 'M57 — Nébuleuse de l’Anneau (Lyre)', aliases: 'anneau ring nebula' },
+      { id: 'M58', name: 'M58 — Galaxie spirale (Vierge)', aliases: 'spirale' },
+      { id: 'M59', name: 'M59 — Galaxie elliptique (Vierge)', aliases: 'elliptique virgo' },
+      { id: 'M60', name: 'M60 — Galaxie elliptique (Vierge)', aliases: 'elliptique virgo' },
+      { id: 'M61', name: 'M61 — Galaxie spirale (Vierge)', aliases: 'spirale virgo' },
+      { id: 'M62', name: 'M62 — Amas globulaire (Ophiuchus)', aliases: 'globulaire' },
+      { id: 'M63', name: 'M63 — Galaxie du Tournesol (Chiens de Chasse)', aliases: 'tournesol sunflower' },
+      { id: 'M64', name: 'M64 — Galaxie de l’Œil Noir (Chevelure)', aliases: 'oeil noir black eye' },
+      { id: 'M65', name: 'M65 — Galaxie (Lion)', aliases: 'leo triplet' },
+      { id: 'M66', name: 'M66 — Galaxie (Lion)', aliases: 'leo triplet' },
+      { id: 'M67', name: 'M67 — Amas ouvert (Cancer)', aliases: 'amas ouvert' },
+      { id: 'M68', name: 'M68 — Amas globulaire (Hydre)', aliases: 'globulaire' },
+      { id: 'M69', name: 'M69 — Amas globulaire (Sagittaire)', aliases: 'globulaire' },
+      { id: 'M70', name: 'M70 — Amas globulaire (Sagittaire)', aliases: 'globulaire' },
+      { id: 'M71', name: 'M71 — Amas globulaire (Flèche)', aliases: 'globulaire fleche' },
+      { id: 'M72', name: 'M72 — Amas globulaire (Verseau)', aliases: 'globulaire' },
+      { id: 'M73', name: 'M73 — Asterisme (Verseau)', aliases: 'asterisme' },
+      { id: 'M74', name: 'M74 — Galaxie spirale (Poissons)', aliases: 'spirale' },
+      { id: 'M75', name: 'M75 — Amas globulaire (Sagittaire)', aliases: 'globulaire' },
+      { id: 'M76', name: 'M76 — Petite Dumbbell (Persée)', aliases: 'petite haltère little dumbbell' },
+      { id: 'M77', name: 'M77 — Galaxie (Baleine)', aliases: 'seyfert cetus baleine' },
+      { id: 'M78', name: 'M78 — Nébuleuse par réflexion (Orion)', aliases: 'orion' },
+      { id: 'M79', name: 'M79 — Amas globulaire (Lièvre)', aliases: 'globulaire lievre' },
+      { id: 'M80', name: 'M80 — Amas globulaire (Scorpion)', aliases: 'globulaire' },
+      { id: 'M81', name: 'M81 — Galaxie de Bode (Grande Ourse)', aliases: 'bode' },
+      { id: 'M82', name: 'M82 — Galaxie du Cigare (Grande Ourse)', aliases: 'cigare cigar' },
+      { id: 'M83', name: 'M83 — Galaxie du Moulinet Austral (Hydre fem.)', aliases: 'southern pinwheel' },
+      { id: 'M84', name: 'M84 — Galaxie (Vierge)', aliases: 'virgo' },
+      { id: 'M85', name: 'M85 — Galaxie (Chevelure)', aliases: 'coma' },
+      { id: 'M86', name: 'M86 — Galaxie (Vierge)', aliases: 'virgo' },
+      { id: 'M87', name: 'M87 — Galaxie (Vierge)', aliases: 'virgo jet' },
+      { id: 'M88', name: 'M88 — Galaxie spirale (Chevelure)', aliases: 'spirale' },
+      { id: 'M89', name: 'M89 — Galaxie (Vierge)', aliases: 'virgo' },
+      { id: 'M90', name: 'M90 — Galaxie (Vierge)', aliases: 'virgo' },
+      { id: 'M91', name: 'M91 — Galaxie barrée (Chevelure)', aliases: 'barred' },
+      { id: 'M92', name: 'M92 — Amas globulaire (Hercule)', aliases: 'globulaire hercule' },
+      { id: 'M93', name: 'M93 — Amas ouvert (Poupe)', aliases: 'amas ouvert' },
+      { id: 'M94', name: 'M94 — Galaxie (Chiens de Chasse)', aliases: 'starburst' },
+      { id: 'M95', name: 'M95 — Galaxie barrée (Lion)', aliases: 'barred' },
+      { id: 'M96', name: 'M96 — Galaxie (Lion)', aliases: '' },
+      { id: 'M97', name: 'M97 — Nébuleuse du Hibou (Grande Ourse)', aliases: 'hibou owl' },
+      { id: 'M98', name: 'M98 — Galaxie (Chevelure)', aliases: '' },
+      { id: 'M99', name: 'M99 — Galaxie (Chevelure)', aliases: 'pinwheel' },
+      { id: 'M100', name: 'M100 — Galaxie (Chevelure)', aliases: 'pinwheel' },
+      { id: 'M101', name: 'M101 — Galaxie du Moulinet (Grande Ourse)', aliases: 'moulinet pinwheel' },
+      { id: 'M102', name: 'M102 — Galaxie (Dragon)', aliases: 'spindle?' },
+      { id: 'M103', name: 'M103 — Amas ouvert (Cassiopeia)', aliases: 'amas ouvert' },
+      { id: 'M104', name: 'M104 — Galaxie du Sombrero (Vierge)', aliases: 'sombrero' },
+      { id: 'M105', name: 'M105 — Galaxie (Lion)', aliases: '' },
+      { id: 'M106', name: 'M106 — Galaxie (Chiens de Chasse)', aliases: '' },
+      { id: 'M107', name: 'M107 — Amas globulaire (Ophiuchus)', aliases: 'globulaire' },
+      { id: 'M108', name: 'M108 — Galaxie (Grande Ourse)', aliases: '' },
+      { id: 'M109', name: 'M109 — Galaxie barrée (Grande Ourse)', aliases: 'barred' },
+      { id: 'M110', name: 'M110 — Galaxie (Andromède)', aliases: 'andromede compagnon' }
+    ];
+
+    // --- Stockage ---
+    const KEY = 'messierChecklist.v1';
+    const defaultObserved = { M13: true, M31: true, M45: true }; // d'après ton carnet
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(KEY);
+        if (!raw) return { ...defaultObserved };
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : { ...defaultObserved };
+      } catch { return { ...defaultObserved }; }
+    }
+    function saveState(state) {
+      localStorage.setItem(KEY, JSON.stringify(state));
+    }
+
+    // --- Rendu ---
+    const listEl = document.getElementById('list');
+    const qEl = document.getElementById('q');
+    const counterEl = document.getElementById('counter');
+    const fillEl = document.getElementById('fill');
+    const clearBtn = document.getElementById('clear');
+    const selectAllBtn = document.getElementById('selectAll');
+
+    let state = loadState();
+
+    function render(items = M) {
+      listEl.innerHTML = '';
+      items.forEach(({ id, name }) => {
+        const checked = !!state[id];
+        const item = document.createElement('div');
+        item.className = 'item' + (checked ? ' checked' : '');
+        item.setAttribute('role', 'listitem');
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.id = id;
+        cb.checked = checked;
+        cb.addEventListener('change', () => {
+          state[id] = cb.checked || undefined; // undefined = non stocké/falsey
+          if (cb.checked) item.classList.add('checked'); else item.classList.remove('checked');
+          saveState(state);
+          updateStats();
+        });
+
+        const label = document.createElement('label');
+        label.htmlFor = id;
+        label.className = 'name';
+        label.textContent = name;
+
+        const badge = document.createElement('span');
+        badge.className = 'badge';
+        badge.textContent = id;
+
+        item.appendChild(cb);
+        item.appendChild(label);
+        item.appendChild(badge);
+        listEl.appendChild(item);
+      });
+      updateStats();
+    }
+
+    function updateStats() {
+      const total = M.length;
+      const done = Object.values(state).filter(Boolean).length;
+      counterEl.textContent = `${done} / ${total} observés`;
+      fillEl.style.width = `${(done / total) * 100}%`;
+    }
+
+    // Recherche simple sur id, nom et alias
+    qEl.addEventListener('input', () => {
+      const v = qEl.value.trim().toLowerCase();
+      if (!v) return render(M);
+      const filtered = M.filter(o =>
+        o.id.toLowerCase().includes(v) ||
+        o.name.toLowerCase().includes(v) ||
+        (o.aliases && o.aliases.toLowerCase().includes(v))
+      );
+      render(filtered);
+    });
+
+    // Boutons utilitaires
+    clearBtn.addEventListener('click', () => {
+      state = {}; // tout décoché
+      saveState(state); render();
+    });
+    selectAllBtn.addEventListener('click', () => {
+      state = {}; M.forEach(o => state[o.id] = true); saveState(state); render();
+    });
+
+    // Premier rendu
+    render();
+  </script>
+</body>
+</html>
